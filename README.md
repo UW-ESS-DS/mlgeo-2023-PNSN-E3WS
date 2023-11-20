@@ -26,7 +26,7 @@ Finally, we provide a YAML file that provides additional modules for development
 
 ___________________________________________________________________________
 
-## Initial README.md at time of fork-ing (17. Nov. 2023)
+## Initial README.md
 
 # E3WS: Earthquake Early Warning Starting From 3 s of Records on a Single Station With Machine Learning
 
