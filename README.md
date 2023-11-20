@@ -1,16 +1,15 @@
 # PNSN-E3WS  
-This repository is a fork of the E3WS repostory published by Pablo Lara (see below)  
+This repository is a lightened version of the E3WS repostory published by Pablo Lara and others (2023) that includes only the best-performing trained model files (\*7tp3\*.joblib) associated with their publication and one example of input files for training a DET model.
 
 The purpose of this repository is to test application of elements of E3WS on data from the Pacific Northwest Seismic Network (PNSN) with particular focus on charactrizing events in the US Pacific Northwest (PNW) and Cascadia Subduction Zone (CSZ) that bound the current magnitude alerting threshold for PNSN operations (M >= 2.95) and fall below the minimum magnitude used for the published version of E3WS.  
 
-This initial fork is being used as a course project for ESS 469/569 at the University of Washington (Fall 2023) and if it shows promise may have continued development beyond the course.
+This copy is being used as a course project for ESS 469/569 at the University of Washington (Fall 2023) and if it shows promise may have continued development beyond the course on the PNSN/PSNS-E3WS repository.
 
-:fork editor: Nathan T. Stevens  
-:fork co-editors: Benz Poobua, Jake Ward  
+:repository lead editor: Nathan T. Stevens  
 :email: ntsteven (at) uw.edu  
 :org: Pacific Northwest Seismic Network  
 
-:license: This forked repository adopts the CC4.0-BY license.   
+:license: This repository adopts the CC4.0-BY license from the original E3WS repository (see below)
 :attribution: For referencing the E3WS model architecture and code base, please reference Pablo Lara and co-authors as stated below (Lara et al., 2023). If using PNSN specific adaptations of the E3WS code-base in this repository, please cite Lara et al. (2023) and the URL for this repository.  
 
 ## Added Features  
