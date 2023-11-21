@@ -14,7 +14,10 @@ This shell script was executed on the PNSN `pp2` server, copying data from the `
 
 `Event_Mag_Phase/AQMS_event_mag_phase_query_output.csv`  
 Generated using `Evid` values from `pnsn_event_export_20231117.csv` using the psql query documented in `AQMS_event_mag_phase_query.sh`  
-This shell script was executed on the PNSN `pp2` server, copying data from the `archdb` PostgreSQL database
+This shell script was executed on the PNSN `pp2` server, copying data from the `archdb` PostgreSQL database  
+
+***NOTE: the `datetime` and `arrdatetime` fields are in `unix` timestamps and are NOT corrected for leap-seconds***  
+
 |FIELDS          |Explanation  |
 |---------------|-----------------------------|
 |EVENT Table Attributes |
@@ -31,7 +34,7 @@ This shell script was executed on the PNSN `pp2` server, copying data from the `
 |lat| Origin Latitude (deg N)|
 |lon| Origin Longitude (deg E)|
 |depth| Depth (km)|
-|datetime| Origin time (epoch seconds)|
+|datetime| Origin time in **unix** seconds|
 |erhor| Horizontal error (km)|
 |erlat| Latitude error (deg N)|
 |erlon| Longitude error (deg E)|
@@ -45,7 +48,7 @@ This shell script was executed on the PNSN `pp2` server, copying data from the `
 |fepi| Was epicenter fixed?|
 |ARRIVAL Table Attributes | 
 |arid| Arrival ID|
-|arrdatetime| Arrival Datetime (header modified manually)|
+|arrdatetime| Arrival Datetime in **unix** seconds (header modified manually)|
 |iphase| Phase identity|
 |sta| Recording station|
 |net| Recording network|
