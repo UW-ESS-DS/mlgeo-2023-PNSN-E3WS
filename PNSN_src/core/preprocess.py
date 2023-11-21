@@ -12,7 +12,7 @@
 """
 from obspy import Stream, Trace
 import numpy as np
-import PNSN_src.feature_functions as fvf
+import core.feature_functions as fvf
 
 
 def sort_by_components(stream, order="E1N2Z3"):
@@ -27,7 +27,7 @@ def sort_by_components(stream, order="E1N2Z3"):
     """
     st_out = Stream()
     for _c in order:
-        _st = stream.copy().select(channel=f"??_c")
+        _st = stream.copy().select(channel=f"??{_c}")
         if len(_st) > 0:
             st_out += _st
     return st_out
@@ -115,9 +115,10 @@ def preprocess_NRT_pipeline(
 def process_feature_vector(
     pp_stream,
     tkwargs={"thresh": 0.8, "bins": 200, "alpha": 2},
-    fkwargs={"N_fft": 1024, "pct_overlap": 75, "bins": 50, "alpha": 2},
-    fthresh=0.4,
+    fkwargs={"N_fft": 1024, "pct_overlap": 75, 
+             "bins": 50, "alpha": 2, "thresh": 0.4},
     ckwargs={"numcep": 13, "nfilt": 26, "freqmin": 1.0},
+    asarray=True
 ):
     """
     Wrapper for extracting the feature vector for 1-C and 3-C waveform data
@@ -151,7 +152,6 @@ def process_feature_vector(
 
     """
     features = []
-    oneC = False
     if isinstance(pp_stream, Trace):
         pp_stream = Stream(pp_stream)
         oneC = True
@@ -160,21 +160,28 @@ def process_feature_vector(
     if len(pp_stream) == 1:
         oneC = True
         data_ENZ = np.array([pp_stream[0].data for x in range(3)])
+    # If there's one valid horizontal and one dead one, still treat like 1C
+    elif len(pp_stream) == 2:
+        oneC = True
+        data_ENZ = np.array([pp_stream[-1].data for x in range(3)])
     # Otherwise compose 3-C data as normal
     elif len(pp_stream) == 3:
         data_ENZ = np.array([pp_stream[x].data for x in range(3)])
-
+        oneC = False
+    else:
+        breakpoint()
     # Extract relative times of data and sampling rate regardless
     dtimes = pp_stream[0].times()
     sr = pp_stream[0].stats.sampling_rate
 
-    # If working with 1-C data, set 3-C features to 0
+    # If working with 1-C data or a dead channel set 3-C features to 0
     if oneC:
-        features = np.zeros(
+        features = list(
+            np.zeros(
             5,
-        )
+        ))
     # otherwise calculate 3C features
-    elif len(pp_stream) == 3:
+    else:
         features = fvf.process_rectilinearity(data_ENZ)
 
     # Iterate across channels and append features in sequence
@@ -183,7 +190,8 @@ def process_feature_vector(
         features += fvf.process_spectral(_data, sr, **fkwargs)
         features += fvf.process_cepstral(_data, sr, **ckwargs)
 
-    features = np.array(features, dtype=np.float32)
+    if asarray:
+        features = np.array(features, dtype=np.float32)
 
     return features
 
