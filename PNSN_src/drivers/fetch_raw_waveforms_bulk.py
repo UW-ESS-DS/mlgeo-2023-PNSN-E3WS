@@ -1,3 +1,48 @@
+"""
+:module: drivers.fetch_raw_waveforms_bulk
+:auth: Nathan T. Stevens
+:email: ntsteven (at) uw.edu
+:org: Pacific Northwest Seismic Network
+:license: CC-BY-4.0
+
+:purpose:
+    This script generates bulk waveform requests for the IRIS webservice
+    by EVID and saves successful waveform queries into EVID labeled
+    subdirectories as bulkXtpY.mseed with X and Y indicating integer
+    second front and back padding around p-wave arrival time data for
+    each labeled arrival (tp). 
+
+    e.g., EVID1234567/bulk20tp40.mseed
+        Waveform data for event ID 1234567 with 20 seconds leading and
+        40 seconds trailing the P-arrival time for each station with
+        input arrival data.
+
+    The script also assesses the number of unique channels and number of
+    traces associated with each station associated with an arrival and
+    writes subset CSV's with these statistics appended to the affiliated
+    EVID directory.
+
+:notes:
+    Padding is set to 25tp45 in order to produce 70 second long records
+    that can be used in other ML applications besides E3WS, which really only 
+    requires 10 seconds of data (best fit in Lara et al. (2023) is 7tp3), such
+    as EQTransformer (Mousavi et al., 2019) which has an input vector length of
+    3x6000 and was trained on 100 sps data (i.e., 60 sec of 3-C records).
+
+
+:references:
+Pablo Lara, Quentin Bletery, Jean-Paul Ampuero, Adolfo Inza, Hernando Tavera.
+    Earthquake Early Warning Starting From 3 s of Records on a Single Station
+    With Machine Learning. Journal of Geophysical Research: Solid Earth.
+    https://doi.org/10.1029/2023JB026575
+
+Mousavi, S. Mostafa, William L. Ellsworth, Weiqiang Zhu, Lindsay Y. Chuang, and
+    Gregory C. Beroza. “Earthquake Transformer—an Attentive Deep-Learning Model
+    for Simultaneous Earthquake Detection and Phase Picking.” Nature Communications
+    11, no. 1 (August 7, 2020): 3952. https://doi.org/10.1038/s41467-020-17591-w.
+
+"""
+
 import os
 import sys
 import pandas as pd
@@ -109,9 +154,11 @@ for _i, _evid in tqdm(enumerate(df.evid.unique()), disable=verbose):
                 f"Bulk request of {len(bulk)} stations returned {len(st)} traces in {t1 - t0 :.3f} sec"
             )
         if empty_stream:
-            df_out = pd.concat([_df, pd.DataFrame(columns=["nchan_wf", "ntr_wf"],
-                                                  index=_df.index)], 
-                               axis=1, ignore_index=False)
+            df_out = pd.concat(
+                [_df, pd.DataFrame(columns=["nchan_wf", "ntr_wf"], index=_df.index)],
+                axis=1,
+                ignore_index=False,
+            )
             # Write filtered metadata to disk
             oname = META_FSTR.format(EVID=_evid)
             if not os.path.exists(os.path.split(oname)[0]):

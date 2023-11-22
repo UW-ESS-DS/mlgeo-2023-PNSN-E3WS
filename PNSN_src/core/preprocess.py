@@ -5,9 +5,30 @@
 :org: Pacific Northwest Seismic Network
 :license: CC-BY-4.0
 
-:purpose: This module provides waveform preprocessing methods for training/validation/testing of the E3WS
-          ML model (Lara et al., 2023) under the assumption that a user starts out with an Obspy Stream
-          that contains trace(s) with attached instrument response(s)
+:purpose: 
+    This module provides waveform preprocessing methods for
+    training/validation/testing of the E3WS ML model
+    (Lara et al., 2023) under the assumption that a user starts
+    out with an Obspy Stream that contains trace(s) with attached
+    instrument response(s). This module currently contains an adaptation
+    of the preprocessing pipeline from Lara et al. (2023), using the 
+    trace.remove_response() approach to instrument response correction, 
+    rather than the trace.simulate(remove_paz) approach used in their publication.
+
+    This was a decision made out of conveneince at the time of writing this
+    module and subsequent data acquisition modules provided insighs on a 
+    convenient way to extract SAC Poles and Zeros files (*.pz) from an obspy
+    Inventory. (see drivers.get_RESP_inv_from_bulk.py)
+
+:TODO: 
+    Provide a method that exactly copies the pre-processing pipeline from 
+    Lara et al. (2023).
+
+:references:
+Pablo Lara, Quentin Bletery, Jean-Paul Ampuero, Adolfo Inza, Hernando Tavera.
+    Earthquake Early Warning Starting From 3 s of Records on a Single Station
+    With Machine Learning. Journal of Geophysical Research: Solid Earth.
+    https://doi.org/10.1029/2023JB026575
 
 """
 from obspy import Stream, Trace
@@ -115,10 +136,9 @@ def preprocess_NRT_pipeline(
 def process_feature_vector(
     pp_stream,
     tkwargs={"thresh": 0.8, "bins": 200, "alpha": 2},
-    fkwargs={"N_fft": 1024, "pct_overlap": 75, 
-             "bins": 50, "alpha": 2, "thresh": 0.4},
+    fkwargs={"N_fft": 1024, "pct_overlap": 75, "bins": 50, "alpha": 2, "thresh": 0.4},
     ckwargs={"numcep": 13, "nfilt": 26, "freqmin": 1.0},
-    asarray=True
+    asarray=True,
 ):
     """
     Wrapper for extracting the feature vector for 1-C and 3-C waveform data
@@ -178,8 +198,9 @@ def process_feature_vector(
     if oneC:
         features = list(
             np.zeros(
-            5,
-        ))
+                5,
+            )
+        )
     # otherwise calculate 3C features
     else:
         features = fvf.process_rectilinearity(data_ENZ)
@@ -224,8 +245,8 @@ def run_example():
     t4 = time()
     print(f"dependency imports took {t1 - t0: .3f} sec")
     print(f"data download took {t2 - t1: .3f} sec")
-    print(f'preprocessing took {t3 - t2: .3f} sec')
-    print(f'feature extraction took {t4 - t3: .3f} sec')
+    print(f"preprocessing took {t3 - t2: .3f} sec")
+    print(f"feature extraction took {t4 - t3: .3f} sec")
 
     return st, pp_stream, fv
 
