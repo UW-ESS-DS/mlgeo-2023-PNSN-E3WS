@@ -78,4 +78,4 @@ for _f in tqdm(flist):
             kw = dict(zip(keys,stats))
             inv = client.get_stations(**kw)
             # Write response out to sacpz by channel:
-            inv.write(os.path.join(path, f'{stats[2]}.{stats[3]}.pz'), format='SACPZ')
+            inv.write(os.path.join(path, 'paz', f'{stats[2]}.{stats[3]}.pz'), format='SACPZ')
