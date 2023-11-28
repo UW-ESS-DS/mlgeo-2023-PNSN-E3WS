@@ -18,7 +18,7 @@ IGLOB = os.path.join(IROOT, "EVID*/bulk*.mseed")
 pp_lead = 7.0  # [seconds] delta time to trim off from each trace starttime
 pp_lag = 3.0  # [seconds] delta time to trim off from each trace endtime
 merge_kwargs = {"method": 0} #, "interpolation_samples": -1}  # kwargs for stream.merge()
-proc_str = 'standard'
+proc_str = 'wlirc'
 
 
 save_preprocessed = False
@@ -80,14 +80,14 @@ for _fdir in tqdm(dir_list):
         # Placeholder for saving preprocessed waveforms
         if save_preprocessed:
             breakpoint()
-        
+
         #### Extract features ####
         _features = pp.process_feature_vector(_st_pp, asarray=False)
 
         #### Capture feature vectors ####
         # Add basic indexing info to feature line
         _fline = [_arid, _evid, _ser.net, _ser.sta] + _features
-        
+
         # Save feature line to event-holder
         features.append(_fline)
 
@@ -101,4 +101,4 @@ for _fdir in tqdm(dir_list):
 
 #### Save Super-Feature Vector ####
 DF_FV = pd.DataFrame(FEATURES, columns=cols)
-DF_FV.to_csv(os.path.join(IROOT,f'complete_feature_vector_set_{proc_str}.csv'))
+DF_FV.to_csv(os.path.join(IROOT, f'complete_feature_vector_set_{proc_str}.csv'))

@@ -1,5 +1,5 @@
 """
-:module: drivers.get_RESP_inv_from_bulk
+:module: drivers.build_waveform_dataset.get_RESP_inv_from_bulk
 :auth: Nathan T. Stevens
 :email: ntsteven (at) uw.edu
 :org: Pacific Northwest Seismic Network
@@ -26,9 +26,9 @@ output_xml = True
 output_paz = True
 
 # Map relative paths to root directory for process
-ROOT = os.path.join('..','..','PNSN_data')
+ROOT = os.path.join("..", "..", "..", "PNSN_data")
 # Create glob search string
-GSTR = os.path.join(ROOT,'EVID*/*.mseed')
+GSTR = os.path.join(ROOT, "EVID*/*.mseed")
 # Get file list
 flist = glob(GSTR)
 flist.sort()
@@ -37,16 +37,17 @@ flist.sort()
 client = Client("IRIS")
 
 for _f in tqdm(flist):
-    # Get waveform header information
-    st = read(_f,head_only=True)
     # Get path from _f
     path, _ = os.path.split(_f)
+    ofpn = os.path.join(path, "station.xml")
+    # Get waveform header information
+    st = read(_f, head_only=True)
 
     if output_xml:
         # Create lists for waveform response
         stations = []
         channels = []
-        network = 'UW'
+        network = "UW"
         sts = []
         ets = []
         for _tr in st:
@@ -56,26 +57,32 @@ for _f in tqdm(flist):
                 channels.append(_tr.stats.channel)
             sts.append(_tr.stats.starttime)
             ets.append(_tr.stats.endtime)
-        sta_str = ','.join(stations)
-        cha_str = ','.join(channels)
+        sta_str = ",".join(stations)
+        cha_str = ",".join(channels)
         st_min = min(sts)
         et_max = max(ets)
 
-        inv = client.get_stations(startbefore=st_min,
-                                endafter=et_max,
-                                station=sta_str,
-                                channel=cha_str,
-                                level='response')
+        inv = client.get_stations(
+            startbefore=st_min,
+            endafter=et_max,
+            station=sta_str,
+            channel=cha_str,
+            level="response",
+        )
         # Write inventory out as a stationXML file
-        inv.write(os.path.join(path, 'station.xml'), format='STATIONXML')
+        inv.write(ofpn, format="STATIONXML")
 
     if output_paz:
-        if not os.path.exists(os.path.join(path,'paz')):
-            os.makedirs(os.path.join(path,'paz'))
+        if not os.path.exists(os.path.join(path, "paz")):
+            os.makedirs(os.path.join(path, "paz"))
         for _tr in st:
-            keys = ['startbefore','endafter','station','channel','level']
-            stats = [_tr.stats[x] for x in ['starttime','endtime','station','channel']] + ['response']
-            kw = dict(zip(keys,stats))
+            keys = ["startbefore", "endafter", "station", "channel", "level"]
+            stats = [
+                _tr.stats[x] for x in ["starttime", "endtime", "station", "channel"]
+            ] + ["response"]
+            kw = dict(zip(keys, stats))
             inv = client.get_stations(**kw)
             # Write response out to sacpz by channel:
-            inv.write(os.path.join(path, 'paz', f'{stats[2]}.{stats[3]}.pz'), format='SACPZ')
+            inv.write(
+                os.path.join(path, "paz", f"{stats[2]}.{stats[3]}.pz"), format="SACPZ"
+            )

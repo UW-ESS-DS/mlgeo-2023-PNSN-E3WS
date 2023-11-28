@@ -1,5 +1,5 @@
 """
-:module: drivers.fetch_raw_waveforms_bulk
+:module: drivers.build_waveform_dataset.fetch_raw_waveforms_bulk
 :auth: Nathan T. Stevens
 :email: ntsteven (at) uw.edu
 :org: Pacific Northwest Seismic Network
@@ -52,7 +52,7 @@ from obspy import UTCDateTime, Stream
 from obspy.clients.fdsn import Client
 from tqdm import tqdm
 
-sys.path.append("..")
+sys.path.append("..", "..")
 import core.preprocess as pp
 from util.time import unix_to_epoch, UTCDateTime_to_Timestamp
 
@@ -62,7 +62,7 @@ dtlag = 45.0  # [seconds] initial record pull trailing P-pick
 verbose = False
 
 # Define absolute path to
-ROOT = os.path.join("..", "..")
+ROOT = os.path.join("..", "..", "..")
 DROOT = os.path.join(ROOT, "PNSN_data")
 # Define waveform file formatting
 st_str = "EVID{EVID}/{NET}.{STA}.{LOC}.{CHANS}.{ARID}.mseed"
