@@ -14,5 +14,6 @@ dependencies:
     - PyGeodesy==23.3.23
     - obspy==1.3.0
     - pandas
+    - graphviz
     - ipython
     - jupyterlab
