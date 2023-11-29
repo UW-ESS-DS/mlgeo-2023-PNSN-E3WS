@@ -24,25 +24,35 @@
     Provide a method that exactly copies the pre-processing pipeline from 
     Lara et al. (2023).
 
+:resources on instrument response removal:
+    Burky et al. (2021)
+    https://www.iris.edu/hq/es_course/content/2011/monday/3_2InstrumentResponse.pdf
+    http://eqseis.geosc.psu.edu/cammon/HTML/Classes/AdvSeismo/iresp/iresp.html
+    
 :references:
 Pablo Lara, Quentin Bletery, Jean-Paul Ampuero, Adolfo Inza, Hernando Tavera.
     Earthquake Early Warning Starting From 3 s of Records on a Single Station
     With Machine Learning. Journal of Geophysical Research: Solid Earth.
     https://doi.org/10.1029/2023JB026575
+    
+Burky, A. L., J. C. E. Irving, and F. J. Simons (2021). Instrument Response 
+    Removal and the 2020 MLg 3.1 Marlboro, New Jersey, Earthquake, Seismol. 
+    Res. Lett. 92, 3865-3872, https://doi.org/10.1785/0220210118
 
 """
 import os
 import sys
-ROOT = os.path.join("..", "..")
 from glob import glob
 import numpy as np
 import pandas as pd
 from obspy import Stream, Trace, read, read_inventory
+
+ROOT = os.path.join("..", "..")
 # Import repository specific modules
 sys.path.append(ROOT)
 import PNSN_src.core.feature_functions as fvf
 import PNSN_src.util.resp as resp
-
+import PNSN_src.contrib.rflexa.transfer as tfn
 
 def sort_by_components(stream, order="E1N2Z3"):
     """
@@ -337,15 +347,15 @@ def run_event_from_disk(EVID_dir, out_fstr="{key}_FV.npy", decon_method="PAZ"):
     elif decon_method == "RESP":
         # Attach RESP response information
         inv = read_inventory(os.path.join(EVID_dir, "station.xml"))
-        rr_st = st.attach_response(inv)
+        st.attach_response(inv)
         # Use inventory to get station names
         for _n in inv.networks:
             for _s in _n.stations:
                 sta = _s.code
-                sta_st = rr_st.select(station=sta)
+                sta_st = st.select(station=sta)
                 if len(sta_st) > 0:
                     # Run preprocessing
-                    pp_st = preprocess_rr_pipeline(rr_st)
+                    pp_st = preprocess_rr_pipeline(sta_st)
 
                     # Extract features
                     fv = process_feature_vector(pp_st, asarray=True)
