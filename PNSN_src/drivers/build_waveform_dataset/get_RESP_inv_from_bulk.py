@@ -42,8 +42,9 @@ for _f in tqdm(flist):
     ofpn = os.path.join(path, "station.xml")
     # Get waveform header information
     st = read(_f, head_only=True)
+    
 
-    if output_xml:
+    if output_xml and not os.path.isfile(ofpn):
         # Create lists for waveform response
         stations = []
         channels = []
@@ -72,7 +73,7 @@ for _f in tqdm(flist):
         # Write inventory out as a stationXML file
         inv.write(ofpn, format="STATIONXML")
 
-    if output_paz:
+    if output_paz and not os.path.exists(os.path.join(path,'paz')):
         if not os.path.exists(os.path.join(path, "paz")):
             os.makedirs(os.path.join(path, "paz"))
         for _tr in st:
