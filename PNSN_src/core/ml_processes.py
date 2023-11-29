@@ -18,16 +18,17 @@
 
 import os
 import sys
-from sklearn import StandardScaler
-from sklearn import 
+# from sklearn import StandardScaler
+# from sklearn import 
 
 
 # Set path to root directory and append to path
-ROOT = os.path.join('..','..')
+ROOT = os.path.join('..', '..')
 sys.path.append(ROOT)
 
 # # Load repository specific codes
 # import PNSN_src.util.model_io as io
+
 
 def run_prediction(pb_SAM_model, feature_vector):
     """
@@ -38,14 +39,30 @@ def run_prediction(pb_SAM_model, feature_vector):
     :param pb_SAM_model: [PNSN_src.util.SAM.pb_SAM]
         Ensemble model object trained to estimate a particular
         source property given a feature_vector
-    :param feature_vector: [(140, ) numpy.ndarray]
+    :param feature_vector: [(1, 140) numpy.ndarray]
         140 element feature vector proposed in Lara et al. (2023)
     
     :: OUTPUT ::
     :return predict: [float]
         Predicted value (model specific)
     """
-    predict = pb_SAM_model.predict(feature_vector)[0]
+    if feature_vector.shape == (1, 140):
+        fv = feature_vector
+        predict = pb_SAM_model.predict(fv)[0]
+
+    elif len(feature_vector.shape) == 1:
+        if feature_vector.shape[0] == 140:
+            fv = feature_vector.reshape(1,140)
+            predict = pb_SAM_model.predict(fv)[0]
+        elif len(feature_vector.shape) == 2:
+            if feature_vector.shape[1] == 1:
+                fc = feature_vector.T
+                predict = pb_SAM_model.predict(fv)[0]
+            elif feature_vector.shape[1] > 1:
+                preds = []
+                for _i in range(feature_vector.shape[1]):
+
+    
     return predict
 
 
@@ -64,14 +81,14 @@ def L23_base_model_options():
           }
     return out
 
-def compose_xgb_base_model(scaler, xgbtype='regressor', **options):
-    if xgb_type == 'regressor':
-        model_xgb = make_pipeline(scaler, xgb.XGBRegressor(**options))
-    elif xgb_type == 'classifier':
-        model_xgb = make_pipeline(scaler, xgb.XGBClassifier(**options))
+# def compose_xgb_base_model(scaler, xgbtype='regressor', **options):
+#     if xgb_type == 'regressor':
+#         model_xgb = make_pipeline(scaler, xgb.XGBRegressor(**options))
+#     elif xgb_type == 'classifier':
+#         model_xgb = make_pipeline(scaler, xgb.XGBClassifier(**options))
 
-    return model_xgb
+#     return model_xgb
 
 
-def train_XGB_base_model(xgb_base_model, train_x, train_y):
+# def train_XGB_base_model(xgb_base_model, train_x, train_y):
 
