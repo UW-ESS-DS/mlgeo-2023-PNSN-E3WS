@@ -54,6 +54,7 @@ import PNSN_src.core.feature_functions as fvf
 import PNSN_src.util.resp as resp
 import PNSN_src.contrib.rflexa.transfer as tfn
 
+
 def sort_by_components(stream, order="E1N2Z3"):
     """
     Sort a stream by specified channel component codes
@@ -81,6 +82,8 @@ def preprocess_rr_pipeline(
     fmin1=0.01,
     fmin2=1.0,
     fmax=45.0,
+    tplead=25 - 7,
+    tplag=45 - 3,
 ):
     """
     Conduct the preprocessing routine from Lara et al. (2023)
@@ -145,6 +148,11 @@ def preprocess_rr_pipeline(
             _tr.detrend("demean")
             # remove instrument response
             _tr.remove_response(water_level=water_level, output="ACC")
+            # trim data to target length
+            _tr.trim(
+                starttime=_tr.stats.starttime + tplead,
+                endtime=_tr.stats.endtime - tplag,
+            )
             # Second signal conditioning - triaging edge effects from deconvolution
             _tr.detrend("demean").detrend("linear")
             _tr.taper(0.05, "cosine", side="both")
@@ -155,80 +163,158 @@ def preprocess_rr_pipeline(
     return pp_stream
 
 
-def preprocess_pz_pipeline(
-    stream,
-    order="E2N1Z3",
-    sr=100,
-    fill_value=0.0,
-    water_level=30,
-    fmin1=0.01,
-    fmin2=1.0,
-    fmax=45.0,
+# def preprocess_pz_pipeline(
+#     stream,
+#     order="E2N1Z3",
+#     sr=100,
+#     fill_value=0.0,
+#     water_level=30,
+#     fmin1=0.01,
+#     fmin2=1.0,
+#     fmax=45.0,
+# ):
+#     """
+#     Conduct the preprocessing routine from Lara et al. (2023)
+#     using the Poles and Zeros instrument deconvolution with
+#     using Stream.simulate().
+
+#     This approach applys multiple rounds of detrending and
+#     tapering in order to suppress progressive processing artifacts
+#     at the edges of windowed data, which is beneficial in a near-
+#     real-time processing situation when adding extra data are
+#     prohibitive.
+
+#     :: INPUTS ::
+#     :param stream: [obspy.core.stream.Stream]
+#                 Input stream with 1 or 3 component traces for a single
+#                 seismometer with arbitrary ordering already trimmed
+#                 to specified window length (10 seconds) with a valid
+#                 instrument response attached to each trace under the
+#                 trace.stats.paz AttribDict entry.
+#     :param order: [string]
+#                 String of component codes to iterate across for sampling
+#                 traces from `stream`
+#     :param fmin1: [float]
+#                 highpass frequency in Hz for pre-deconvolution filtering
+#     :param fmin2: [float]
+#                 highpass frequency in Hz for post-deconvolution filtering
+#     :param fmax: [float]
+#                 lowpass frequency in Hz for each filtering (if input signal)
+
+#     :: OUTPUT ::
+#     :return pp_stream: [obspy.core.stream.Stream]
+#                 Ordered, pre-processed stream
+#     """
+#     # Create holder stream
+#     pp_stream = Stream()
+#     # Iterate across copies of input traces
+#     for _c in order:
+#         _st = stream.copy().select(channel=f"??{_c}")
+#         if len(_st) == 1:
+#             _tr = _st[0]
+#             # Remove a linear slope and the midpoint
+#             _tr.detrend("demean").detrend("linear")
+#             # Taper by 5%
+#             _tr.taper(0.05, "cosine", side="both")
+#             # apply specified filter
+#             if _tr.stats.sampling_rate >= fmax * 2:
+#                 _tr.filter(
+#                     "bandpass", freqmin=fmin1, freqmax=fmax, zerophase=True, corners=4
+#                 )
+#             else:
+#                 _tr.filter("highpass", freq=fmin1, zerophase=True, corners=4)
+#             if _tr.stats.sampling_rate != sr:
+#                 _tr.resample(sr)
+#             # Handle gappy data (may need to do white noise instead of 0-pad...)
+#             if np.ma.is_masked(_tr.data):
+#                 _tr.data = _tr.data.filled(fill_value=fill_value)
+#             # remove the mean again to clean up effects of filtering and resampling
+#             _tr.detrend("demean")
+#             # remove instrument response
+#             _tr.remove_response(water_level=water_level, output="ACC")
+#             # Second signal conditioning - triaging edge effects from deconvolution
+#             _tr.detrend("demean").detrend("linear")
+#             _tr.taper(0.05, "cosine", side="both")
+#             _tr.filter(
+#                 "bandpass", freqmin=fmin2, freqmax=fmax, zerophase=True, corners=4
+#             )
+#             pp_stream += _tr
+#     return pp_stream
+
+
+def preprocess_rflexa_pipeline(
+    stream, pz_files, order="E1N2Z3", fill_value=0, sr=100, filt=[1, 2, 44, 45], tplead=25-7, tplag=45-3
 ):
     """
-    Conduct the preprocessing routine from Lara et al. (2023)
-    using the Poles and Zeros instrument deconvolution with
-    using Stream.simulate().
+    Conduct pre-processing with the instrument response correction "transfer" function
+    implementation from Burky et al. (2021) at the core of the pipeline.
 
-    This approach applys multiple rounds of detrending and
-    tapering in order to suppress progressive processing artifacts
-    at the edges of windowed data, which is beneficial in a near-
-    real-time processing situation when adding extra data are
-    prohibitive.
+    Steps:
+    order_traces -v
+        demean -> detrend -> fill values -> taper -> resample -> demean
+         -> remove response -> demean -> detrend -> taper  -> filter
+
 
     :: INPUTS ::
     :param stream: [obspy.core.stream.Stream]
-                Input stream with 1 or 3 component traces for a single
-                seismometer with arbitrary ordering already trimmed
-                to specified window length (10 seconds) with a valid
-                instrument response attached to each trace under the
-                trace.stats.paz AttribDict entry.
-    :param order: [string]
-                String of component codes to iterate across for sampling
-                traces from `stream`
-    :param fmin1: [float]
-                highpass frequency in Hz for pre-deconvolution filtering
-    :param fmin2: [float]
-                highpass frequency in Hz for post-deconvolution filtering
-    :param fmax: [float]
-                lowpass frequency in Hz for each filtering (if input signal)
+            Stream object consisting of synchronous seismic channel traces from
+            a single seismometer
+    :param pz_files: [list]
+            Unordered list of SAC Poles and Zeros file names (and paths) that
+            adhere to the following format:
+                `path/{sta}.{cha}.pz`
+    :param fill_value: [float-like]
+            Value to fill masked elements (data gaps)
+    :param sr: [int]
+            (re)sampling rate applyed with a fourier method
+                `obspy.core.trace.Trace.resample()`
+    :param filt: [4-element list]
+            bandpass filter corners passed to `transfer()`
 
-    :: OUTPUT ::
+    :: OUTPUTS ::
     :return pp_stream: [obspy.core.stream.Stream]
-                Ordered, pre-processed stream
+            pre-processed collection of ordered acceleration seismograms
     """
-    # Create holder stream
     pp_stream = Stream()
-    # Iterate across copies of input traces
     for _c in order:
+        # sort channels
         _st = stream.copy().select(channel=f"??{_c}")
         if len(_st) == 1:
             _tr = _st[0]
-            # Remove a linear slope and the midpoint
+            # Detrend and demean
             _tr.detrend("demean").detrend("linear")
-            # Taper by 5%
-            _tr.taper(0.05, "cosine", side="both")
-            # apply specified filter
-            if _tr.stats.sampling_rate >= fmax * 2:
-                _tr.filter(
-                    "bandpass", freqmin=fmin1, freqmax=fmax, zerophase=True, corners=4
-                )
-            else:
-                _tr.filter("highpass", freq=fmin1, zerophase=True, corners=4)
-            if _tr.stats.sampling_rate != sr:
-                _tr.resample(sr)
-            # Handle gappy data (may need to do white noise instead of 0-pad...)
+            # If data are masked, apply fill value
             if np.ma.is_masked(_tr.data):
                 _tr.data = _tr.data.filled(fill_value=fill_value)
-            # remove the mean again to clean up effects of filtering and resampling
-            _tr.detrend("demean")
-            # remove instrument response
-            _tr.remove_response(water_level=water_level, output="ACC")
-            # Second signal conditioning - triaging edge effects from deconvolution
-            _tr.detrend("demean").detrend("linear")
+            # Taper
             _tr.taper(0.05, "cosine", side="both")
+            # Resample
+            if _tr.stats.sampling_rate != sr:
+                _tr.resample(sr)
+            # Demean again
+            _tr.detrend("demean")
+            # Get arguments for rflexa.transfer
+            _data = _tr.data
+            _delta = _tr.stats.delta
+            for _f in pz_files:
+                _ff = os.path.split(_f)[-1]
+                if f"{_tr.stats.station}.{_tr.stats.channel}.pz" == _ff:
+                    _pz_file = _f
+                    break
+            # Conduct filtering and instrument response correction
+            _tr.data = tfn.transfer(
+                _data, _delta, filt, "acceleration", _pz_file, "sacpz"
+            )
+            # trim data to target length
+            _tr.trim(
+                starttime=_tr.stats.starttime + tplead,
+                endtime=_tr.stats.endtime - tplag,
+            )
+            # Conduct cleanup (second signal conditioning)
+            _tr.detrend("demean").detrend("linear").taper(0.05, "cosine", side="both")
+            # Re-apply filter
             _tr.filter(
-                "bandpass", freqmin=fmin2, freqmax=fmax, zerophase=True, corners=4
+                "bandpass", freqmin=filt[1], freqmax=filt[2], zerophase=True, corners=4
             )
             pp_stream += _tr
     return pp_stream
@@ -264,7 +350,7 @@ def process_feature_vector(
                 5 - 21: E-component temporal features
                 22- 36: E-component spectral features
                 37- 51: E-component cepstral features
-                50- 69: N-component temporal features
+                52- 69: N-component temporal features
                 67- 85: N-component spectral features
                 82- 99: N-component cepstral features
                 95-117: Z-component temporal features
@@ -318,35 +404,38 @@ def process_feature_vector(
     return features
 
 
-def run_event_from_disk(EVID_dir, out_fstr="{key}_FV.npy", decon_method="PAZ"):
+def run_event_from_disk(
+    EVID_dir, out_fstr="{key}_{ircm}_FV.npy", decon_method="RESP", return_streams=False
+):
     fv_dict = {}
     # Read in stream
     st = read(os.path.join(EVID_dir, "bulk25tp45.mseed"))
-
+    # Read in inventory
+    inv = read_inventory(os.path.join(EVID_dir, "station.xml"))
+    if return_streams:
+        st_out = Stream()
     # If using Poles And Zeros for Instrument Response Correction
     if decon_method == "PAZ":
-        # Attach PAZ response information
-        pz_st = resp.attach_paz_to_stream(st, os.path.join(EVID_dir, "paz"))
-        snc_list = []
-        # Use
-        for _tr in pz_st:
-            _snc = (_tr.stats.station, _tr.stats.network, _tr.stats.channel[:2])
-            if _snc not in snc_list:
-                snc_list.append(_snc)
-                skwargs = dict(zip(["station", "network", "channel"], _snc))
-                skwargs["channel"] += "?"
-                # Run preprocessing on specific station/instrument
-                pp_st = preprocess_pz_pipeline(pz_st.select(**skwargs))
-                # Extract features
-                fv = process_feature_vector(pp_st, asarray=True)
-                # Append to output
-                fv_dict.update({f"{_snc[0]:s}_{_snc[2]:s}": fv})
+        # Read in list of *.pz
+        pz_list = glob(os.path.join(EVID_dir, "paz", "*.pz"))
+        pz_list.sort()
+        for _n in inv.networks:
+            for _s in _n.stations:
+                sta = _s.code
+                sta_st = st.select(station=sta)
+                if len(sta_st) > 0:
+                    pp_st = preprocess_rflexa_pipeline(sta_st, pz_list)
+                    # Extract features
+                    fv = process_feature_vector(pp_st, asarray=True)
+                    # Append to output
+                    fv_dict.update({f"{sta:s}_{pp_st[0].stats.channel[:2]:s}": fv})
 
+                    if return_streams:
+                        st_out += pp_st
     # If using RESP and water-level stabilized deconvolution
     # for Instrument Response Correction
     elif decon_method == "RESP":
-        # Attach RESP response information
-        inv = read_inventory(os.path.join(EVID_dir, "station.xml"))
+        # Attach instrument response to stream
         st.attach_response(inv)
         # Use inventory to get station names
         for _n in inv.networks:
@@ -361,16 +450,21 @@ def run_event_from_disk(EVID_dir, out_fstr="{key}_FV.npy", decon_method="PAZ"):
                     fv = process_feature_vector(pp_st, asarray=True)
                     # Append to output
                     fv_dict.update({f"{sta:s}_{pp_st[0].stats.channel[:2]:s}": fv})
+                    if return_streams:
+                        st_out += pp_st
     # Iterate across feature vectors
     for _k in fv_dict.keys():
         # Compose save file name and path
-        out_path = os.path.join(EVID_dir, out_fstr.format(key=_k))
+        out_path = os.path.join(EVID_dir, out_fstr.format(key=_k, ircm=decon_method))
         # Save vector as a Numpy *.npy file
         np.save(out_path, fv_dict[_k])
     # Convert feature vector dictionary into a DataFrame
     df_fv = pd.DataFrame(fv_dict)
     # Return dataframe
-    return df_fv
+    if return_streams:
+        return df_fv, st, st_out
+    else:
+        return df_fv
 
 
 def run_example():
