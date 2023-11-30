@@ -4,8 +4,7 @@ import pandas as pd
 import numpy as np
 from glob import glob
 from tqdm import tqdm
-from obspy import read
-from obspy.clients.fdsn import Client
+from obspy import read, read_inventory
 
 sys.path.append("..")
 import core.preprocess as pp
@@ -44,6 +43,14 @@ for _fdir in tqdm(dir_list):
         parse_dates=["datetime", "arrdatetime"],
         index_col="arid"
     )
+    # Ensure stations called have at least one trace
+    df = df[df.nchan_wf > 0]
+    
+    # Load inventory
+    _inv = read_inventory(os.path.join(_dir, 'station.xml'))
+    # Get list of PAZ files
+    paz_list = glob(os.path.join(_dir, 'paz', '*.pz'))
+    paz_list.sort()                          
 
     # Sanity check that EVIDs for the directory and metadata match
     if _evid != int(df.evid.unique()[0]):
@@ -67,15 +74,14 @@ for _fdir in tqdm(dir_list):
         _st = st_bulk.select(station=_ser.sta)
         # Merge traces
         _st.merge(**merge_kwargs)
-        # Trim waveforms
-        for _tr in _st:
-            _tr.trim(
-                starttime=_tr.stats.starttime + (pads[0] - pp_lead),
-                endtime=_tr.stats.endtime - (pads[1] - pp_lag),
-            )
 
-        #### Preprocess ####
-        _st_pp = pp.preprocess_NRT_pipeline(_st)
+        # Do preprocessing
+        _st_pp = pp.preprocess_rflexa_pipeline(_st, paz_list,
+                                               fill_val=0,
+                                               sr=100,
+                                               filt=[1,2,44,45],
+                                               tplead=pads[0] - pp_lead,
+                                               tplag=pads[1] - pp_lag)
 
         # Placeholder for saving preprocessed waveforms
         if save_preprocessed:
