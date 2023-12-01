@@ -51,7 +51,7 @@ ROOT = os.path.join("..", "..")
 # Import repository specific modules
 sys.path.append(ROOT)
 import PNSN_src.core.feature_functions as fvf
-import PNSN_src.util.resp as resp
+from PNSN_src.util.time import Timestamp_to_UTCDateTime
 import PNSN_src.contrib.rflexa.transfer as tfn
 
 
@@ -243,7 +243,16 @@ def preprocess_rr_pipeline(
 
 
 def preprocess_rflexa_pipeline(
-    stream, pz_files, order="E1N2Z3", fill_value=0, sr=100, filt=[1, 2, 44, 45], tplead=25-7, tplag=45-3
+    stream,
+    pz_files,
+    tp,
+    order="E1N2Z3",
+    fill_value=0,
+    sr=100,
+    filt=[1, 2, 44, 45],
+    tp_pads=[7.0, 3.0],
+    bulk_pads=[25.0, 45.0],
+    mindatafract=0.95
 ):
     """
     Conduct pre-processing with the instrument response correction "transfer" function
@@ -279,13 +288,60 @@ def preprocess_rflexa_pipeline(
     for _c in order:
         # sort channels
         _st = stream.copy().select(channel=f"??{_c}")
+        # If there is more than one trace, assume they're fragments of the same datastream
+        if len(_st) > 1:
+            # Demean and detrend all segments to put ends to 0
+            _st.detrend("demean").detrend("linear")
+            # Apply taper to reduce data importance around edges
+            _st.taper(0.05, "cosine", side="both")
+            # Merge streams, allowing for some amount of interpoaltion
+            # across small gaps (1/20 sec @ 100sps)
+            _st.merge(method=1, interpolation_samples=5)
+            if len(_st) > 1:            
+                print(f'merged stream has {len(_st):d} members, using first record to match PAZ files')
+                _st = Stream(_st[0])
+            # Trim all traces to expected "bulk" lengths, 0-padding edges & gaps
+            # extending from cosine tapered ends (smooth transitions)
+            _st.trim(
+                starttime=tp - bulk_pads[0],
+                endtime=tp + bulk_pads[1],
+                pad=True
+            )
+
+        # If there is exactly one trace in the stream, proceed with processing.
         if len(_st) == 1:
+            masked = False
+            # Check that there are sufficient data in the target window
+            _st_test = _st.copy().trim(starttime=tp - tp_pads[0],
+                                    endtime=tp + tp_pads[1])
+            if len(_st_test) == 0:
+                continue
+            else:
+                _tr_test = _st_test[0]
+                if np.ma.is_masked(_tr_test.data):
+                    # Get the fraction of non-masked values
+                    data_fract = 1 - np.sum(_tr_test.data.mask)/_tr_test.stats.npts
+                    masked = True
+                    # If there are insufficient data, set _st to an empty stream
+                    if data_fract < mindatafract:
+                        continue
+
             _tr = _st[0]
+            # Check if there's enough data 
             # Detrend and demean
-            _tr.detrend("demean").detrend("linear")
-            # If data are masked, apply fill value
-            if np.ma.is_masked(_tr.data):
-                _tr.data = _tr.data.filled(fill_value=fill_value)
+            # If data are masked, do some extra steps to work around masked arrays
+            if np.ma.is_masked(_tr.data) or masked:
+                __st = _tr.copy().split()
+                if len(__st) == 1:
+                    _tr.split().detrend("demean").detrend("linear")
+                elif len(__st) > 1:
+                    _tr.split().detrend("demean").detrend("linear").merge(method=1, interpolation_samples=5)
+                _tr.trim(starttime=__st[0].stats.starttime, endtime=__st[0].stats.endtime, pad=True, fill_value=fill_value)[0]
+            
+            # For non-masked data, proceed as normal
+            else:
+                _tr.detrend("demean").detrend("linear")
+
             # Taper
             _tr.taper(0.05, "cosine", side="both")
             # Resample
@@ -302,21 +358,25 @@ def preprocess_rflexa_pipeline(
                     _pz_file = _f
                     break
             # Conduct filtering and instrument response correction
-            _tr.data = tfn.transfer(
-                _data, _delta, filt, "acceleration", _pz_file, "sacpz"
-            )
-            # trim data to target length
-            _tr.trim(
-                starttime=_tr.stats.starttime + tplead,
-                endtime=_tr.stats.endtime - tplag,
-            )
-            # Conduct cleanup (second signal conditioning)
-            _tr.detrend("demean").detrend("linear").taper(0.05, "cosine", side="both")
+            try:
+                _tr.data = tfn.transfer(
+                    _data, _delta, filt, "acceleration", _pz_file, "sacpz"
+                )
+                # trim data to target window, allowing for gaps to persist
+                _tr.trim(
+                    starttime=tp - tp_pads[0],
+                    endtime=tp + tp_pads[1],
+                )
+                # Conduct cleanup (second signal conditioning)
+                _tr.detrend("demean").detrend("linear").taper(0.05, "cosine", side="both")
+            except AttributeError:
+                continue
             # Re-apply filter
             _tr.filter(
                 "bandpass", freqmin=filt[1], freqmax=filt[2], zerophase=True, corners=4
             )
             pp_stream += _tr
+
     return pp_stream
 
 
@@ -367,18 +427,21 @@ def process_feature_vector(
     if len(pp_stream) == 1:
         oneC = True
         data_ENZ = np.array([pp_stream[0].data for x in range(3)])
+        dtimes_ENZ = np.array([pp_stream[0].times() for x in range(3)])
     # If there's one valid horizontal and one dead one, still treat like 1C
     elif len(pp_stream) == 2:
         oneC = True
         data_ENZ = np.array([pp_stream[-1].data for x in range(3)])
+        dtimes_ENZ = np.array([pp_stream[-1].times() for x in range(3)])
     # Otherwise compose 3-C data as normal
     elif len(pp_stream) == 3:
         data_ENZ = np.array([pp_stream[x].data for x in range(3)])
+        dtimes_ENZ = np.array([pp_stream[x].times() for x in range(3)])
         oneC = False
     else:
-        breakpoint()
+        return np.zeros(shape=(140,))
     # Extract relative times of data and sampling rate regardless
-    dtimes = pp_stream[0].times()
+    # dtimes = pp_stream[0].times()
     sr = pp_stream[0].stats.sampling_rate
 
     # If working with 1-C data or a dead channel set 3-C features to 0
@@ -393,8 +456,10 @@ def process_feature_vector(
         features = fvf.process_rectilinearity(data_ENZ)
 
     # Iterate across channels and append features in sequence
-    for _data in data_ENZ:
-        features += fvf.process_temporal(_data, dtimes, sr, **tkwargs)
+    for _i in range(3):
+        _data = data_ENZ[_i, :]
+        _dtimes = dtimes_ENZ[_i, :]
+        features += fvf.process_temporal(_data, _dtimes, sr, **tkwargs)
         features += fvf.process_spectral(_data, sr, **fkwargs)
         features += fvf.process_cepstral(_data, sr, **ckwargs)
 
@@ -405,13 +470,28 @@ def process_feature_vector(
 
 
 def run_event_from_disk(
-    EVID_dir, out_fstr="{key}_{ircm}_FV.npy", decon_method="RESP", return_streams=False
+    EVID_dir,
+    out_fstr="event_mag_phase_nwf_{ircm}_FV.csv",
+    decon_method="RESP",
+    tp_pads=[7, 3],
+    return_streams=False,
+    mindatafract=0.95
 ):
-    fv_dict = {}
     # Read in stream
     st = read(os.path.join(EVID_dir, "bulk25tp45.mseed"))
     # Read in inventory
     inv = read_inventory(os.path.join(EVID_dir, "station.xml"))
+    # Read in event_mag_phase file
+    df = pd.read_csv(
+        os.path.join(EVID_dir, "event_mag_phase_nwf.csv"),
+        parse_dates=['datetime','arrdatetime']    
+    )
+    # Ensure that df entries have associated data
+    df = df[(df.nchan_wf > 0) & (df.ntr_wf > 0)]
+    # Set index to arrival IDs
+    df.index = df.arid
+    # Initialize output dataframe
+    df_out = df.copy()
     if return_streams:
         st_out = Stream()
     # If using Poles And Zeros for Instrument Response Correction
@@ -419,52 +499,72 @@ def run_event_from_disk(
         # Read in list of *.pz
         pz_list = glob(os.path.join(EVID_dir, "paz", "*.pz"))
         pz_list.sort()
-        for _n in inv.networks:
-            for _s in _n.stations:
-                sta = _s.code
-                sta_st = st.select(station=sta)
-                if len(sta_st) > 0:
-                    pp_st = preprocess_rflexa_pipeline(sta_st, pz_list)
-                    # Extract features
-                    fv = process_feature_vector(pp_st, asarray=True)
-                    # Append to output
-                    fv_dict.update({f"{sta:s}_{pp_st[0].stats.channel[:2]:s}": fv})
+        df_fv = pd.DataFrame()
+        for _s in range(len(df)):
+            _series = df.iloc[_s, :].copy()
+            tp = Timestamp_to_UTCDateTime(_series.arrdatetime)
+            sta = _series.sta
+            sta_st = st.select(station=sta)
+            if len(sta_st) > 0:
+                # Run preprocessing
+                pp_st = preprocess_rflexa_pipeline(
+                    sta_st,
+                    pz_list,
+                    tp,
+                    tp_pads=tp_pads)
 
-                    if return_streams:
-                        st_out += pp_st
+                # Extract features
+                fv = process_feature_vector(pp_st, asarray=True)
+
+                # Write updated _df entries
+                try:
+                    _df_fv = pd.DataFrame(
+                        fv.reshape(1,140), 
+                        columns=[f"f{x:03d}" for x in range(len(fv))],
+                        index=[_series.name]
+                    )
+                except ValueError:
+                    breakpoint()
+                df_fv = pd.concat([df_fv, _df_fv], axis=0, ignore_index=False)
+        df_out = pd.concat([df_out, df_fv], axis=1, ignore_index=False)
     # If using RESP and water-level stabilized deconvolution
     # for Instrument Response Correction
     elif decon_method == "RESP":
         # Attach instrument response to stream
         st.attach_response(inv)
-        # Use inventory to get station names
-        for _n in inv.networks:
-            for _s in _n.stations:
-                sta = _s.code
-                sta_st = st.select(station=sta)
-                if len(sta_st) > 0:
-                    # Run preprocessing
-                    pp_st = preprocess_rr_pipeline(sta_st)
+        # Use df to get station names
+        for _s in _n.stations:
+            sta = _s.code
+            sta_st = st.select(station=sta)
+            if len(sta_st) > 0:
+                # Run preprocessing
+                pp_st = preprocess_rr_pipeline(sta_st, tp_pads=tp_pads)
 
-                    # Extract features
-                    fv = process_feature_vector(pp_st, asarray=True)
-                    # Append to output
-                    fv_dict.update({f"{sta:s}_{pp_st[0].stats.channel[:2]:s}": fv})
-                    if return_streams:
-                        st_out += pp_st
-    # Iterate across feature vectors
-    for _k in fv_dict.keys():
-        # Compose save file name and path
-        out_path = os.path.join(EVID_dir, out_fstr.format(key=_k, ircm=decon_method))
-        # Save vector as a Numpy *.npy file
-        np.save(out_path, fv_dict[_k])
-    # Convert feature vector dictionary into a DataFrame
-    df_fv = pd.DataFrame(fv_dict)
+                # Extract features
+                fv = process_feature_vector(pp_st, asarray=True)
+                # Write updated _df entries
+                _df_fv = pd.DataFrame(
+                    fv, 
+                    columns=[f"f{x:03d}" for x in range(len(fv))],
+                    index=_df.index
+                )
+                df_out = pd.concat([df_out, _df_fv], 
+                                   axis=1, 
+                                   ignore_index=False)
+    # # Iterate across feature vectors
+    # for _k in fv_dict.keys():
+    #     # Compose save file name and path
+    #     out_path = os.path.join(EVID_dir, out_fstr.format(key=_k, ircm=decon_method))
+    #     # Save vector as a Numpy *.npy file
+    #     np.save(out_path, fv_dict[_k])
+    # # Convert feature vector dictionary into a DataFrame
+    # df_fv = pd.DataFrame(fv_dict)
     # Return dataframe
+    df_out.to_csv(os.path.join(EVID_dir, out_fstr.format(ircm=decon_method)))
     if return_streams:
-        return df_fv, st, st_out
+        return df_out, st, st_out
     else:
-        return df_fv
+        return df_out
 
 
 def run_example():
