@@ -368,6 +368,8 @@ def process_temporal(data, dtimes, sr, thresh=0.8, bins=200, alpha=2):
     Note: N. Stevens added this method, combining elements of
     E3WS_rt.py and pb_utils_v16.py
     """
+    if data.shape != dtimes.shape:
+        breakpoint()
     # Get analytic signal
     hilbert = sp.signal.hilbert(data)
     # Get envelope from analytic signal
@@ -474,6 +476,7 @@ def process_spectral(data, sr, N_fft=1024, pct_overlap=75, bins=50, alpha=2, thr
     ]
 
     return features
+
 
 def process_cepstral(data, sr, numcep=13, nfilt=26, freqmin=1.):
     """
