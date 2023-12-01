@@ -369,7 +369,7 @@ def preprocess_rflexa_pipeline(
                 )
                 # Conduct cleanup (second signal conditioning)
                 _tr.detrend("demean").detrend("linear").taper(0.05, "cosine", side="both")
-            except AttributeError:
+            except:
                 continue
             # Re-apply filter
             _tr.filter(
