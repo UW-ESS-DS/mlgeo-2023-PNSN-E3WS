@@ -56,7 +56,7 @@ kfold_kwargs = {"n_splits": 10, "shuffle": False}
 # Development Switch for load/don't load models ()
 RUN_RETRAINING = True
 # Define input model collection path
-IN_ROOT = os.path.join(ROOT, "PNSN_Model", "Lara_2023_Preferred")
+IN_ROOT = os.path.join(ROOT, "PNSN_Model", "Lara_2023_Preferred", TARGET_MODEL)
 # Define output model location
 OUT_ROOT = os.path.join(ROOT, "PNSN_model", "PNSN_retrained", TARGET_MODEL)
 
@@ -72,7 +72,7 @@ if RUN_RETRAINING:
         if models:
             print("models already loaded")
     except NameError:
-        models = io.load_models(IN_ROOT, fn_glob_str="*/*.joblib", verbose=True)
+        models = io.load_models(IN_ROOT, fn_glob_str="*.joblib", verbose=True)
 
 # Define relative path to extracted feature vectors
 fv_data = os.path.join(ROOT, "PNSN_data", "bulk_event_magnitude_phase_nwf_FV.csv")
@@ -113,22 +113,24 @@ if RUN_RETRAINING:
     TICK = time()
     print(f'Starting re-training on {TARGET_MODEL}')
     model = deepcopy(models[TARGET_MODEL])
-    for _I, (ktrain_index, kwithold_index) in enumerate(kf.split(X_train, y_train)):
+    for _I, (ktrain_index, kwithold_index) in tqdm(enumerate(kf.split(X_train, y_train))):
         tick = time()
         print(f'Starting re-training on base_model_ {_I:d}')
         # Get subset base model
         _base_model_ = model.base_models_[0][_I]
+        _base_model_[1].verbosity = 1
+        # breakpoint()
         # Get Kth fold training data subset
         _kX_train = X_train[ktrain_index, :]
         _ky_train = y_train[ktrain_index]
         # Run training
-        _base_model_.fit(_kX_train, _ky_train).score(X_test, y_test)
+        _base_model_.fit(_kX_train, _ky_train)#.score(X_test, y_test)
         tock = time()
         print(f're-training took {tock - tick:.3f} sec')
 
 
 
-breakpoint()
+    breakpoint()
 
 
 # If not running retraining, just use this script to visualize data splitting

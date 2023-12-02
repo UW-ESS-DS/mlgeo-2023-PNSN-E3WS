@@ -2,6 +2,7 @@ PNSN_data/EVID*
 PNSN_data/EVID*
 PNSN_model/Lara_2023_Preferred
 PNSN_model/MAG
+PNSN_model/PNSN_retrained
 *.pyc
 *.zip
 *.csv
