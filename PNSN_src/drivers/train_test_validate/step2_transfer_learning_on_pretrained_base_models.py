@@ -54,7 +54,7 @@ from PNSN_src.util.SAM import pb_SAM
 LOAD_DATA_SPLIT = False
 SAVE_BASE_MODELS = True
 # Define input model collection path
-IN_ROOT = os.path.join(ROOT, "PNSN_Model", "Lara_2023_Preferred")
+IN_ROOT = os.path.join(ROOT, "PNSN_Model", "Lara_2023_Preferred", TARGET_MODEL)
 # Define output model location
 OUT_ROOT = os.path.join(ROOT, "PNSN_model", "PNSN_retrained")
 
@@ -177,7 +177,7 @@ for _I, _TM in enumerate(TARGET_MODELS):
         _kX_train = X_train[_kinclude, :]
         _ky_train = y_train[_kinclude, _I]
         # Run training
-        _base_model_.fit(_kX_train, _ky_train, verbose=True).score(X_test, y_test[:, _I])
+        _base_model_.fit(_kX_train, _ky_train).score(X_test, y_test)
         tock = time()
         print(f"re-training took {tock - tick:.3f} sec")
 
@@ -200,7 +200,7 @@ for _I, _TM in enumerate(TARGET_MODELS):
     print(f"writing {ensemble_out}")
     io.dump_model(model_RT, ensemble_out)
 
-breakpoint()
+    breakpoint()
 
 
 ## GRAVEYARD - SHIFT THIS CHUNK OF PLOTTING CODE TO A `util` or `visualize`
