@@ -14,6 +14,17 @@ def _load_joblib_persistence(file_path, readtype="rb"):
     return model
 
 
+def load_model(file_path, readtype='rb'):
+    with open(file_path, readtype) as _f:
+        model = joblib.load(_f)
+    return model
+
+
+def dump_model(model, file_path, writetype='wb', compress=3):
+    with open(file_path, writetype) as _f:
+        model = joblib.dump(model, _f, compress=compress)
+
+
 def load_models(model_dir, fn_glob_str="*/*.joblib", verbose=True):
     """
     Load a series of *.joblib preserved models contained
