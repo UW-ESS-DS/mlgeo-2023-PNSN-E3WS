@@ -23,8 +23,8 @@ if not os.path.exists(OUT_ROOT):
 ### LABEL, FEATURE, AND MODEL LOADING ###
 
 # Define relative path to model directory
-# model_dir = os.path.join(ROOT, "PNSN_Model", "Lara_2023_Preferred")
-model_dir = os.path.join(ROOT, "PNSN_Model", "PNSN_retrained")
+model_dir = os.path.join(ROOT, "PNSN_Model", "Lara_2023_Preferred")
+# model_dir = os.path.join(ROOT, "PNSN_Model", "PNSN_retrained")
 # Use model I/O routine to load the set of models within this directory
 
 try:
@@ -95,7 +95,7 @@ for _k in models.keys():  # for Benz / Jake change to: "for _k in ['MAG']:"
     idf.index.name = "arid"
     idf.to_csv(
         os.path.join(
-            OUT_ROOT, f"event_mag_phase_FV_PNSN_retrained_individual_{_k}_predictions.csv"
+            OUT_ROOT, f"event_mag_phase_FV_PNSN_pretrained_individual_{_k}_predictions.csv"
         ),
         header=True,
         index=True,
@@ -119,18 +119,18 @@ df_out.to_csv(
     index=False,
 )
 
-for _k in segment_pred_dict.keys():
-    array = segment_pred_dict[_k]
-    idf = pd.DataFrame(
-        array,
-        columns=[f"{_k}{x:02d}" for x in range(array.shape[1])],
-        index=df.index.values[: array.shape[0]],
-    )
-    idf.index.name = "arid"
-    idf.to_csv(
-        os.path.join(
-            OUT_ROOT, f"event_mag_phase_FV_pretrained_individual_{_k}_predictions.csv"
-        ),
-        header=True,
-        index=True,
-    )
+# for _k in segment_pred_dict.keys():
+#     array = segment_pred_dict[_k]
+#     idf = pd.DataFrame(
+#         array,
+#         columns=[f"{_k}{x:02d}" for x in range(array.shape[1])],
+#         index=df.index.values[: array.shape[0]],
+#     )
+#     idf.index.name = "arid"
+#     idf.to_csv(
+#         os.path.join(
+#             OUT_ROOT, f"event_mag_phase_FV_pretrained_individual_{_k}_predictions.csv"
+#         ),
+#         header=True,
+#         index=True,
+#     )
