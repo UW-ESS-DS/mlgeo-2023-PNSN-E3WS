@@ -48,20 +48,25 @@ import PNSN_src.util.model_io as io
 from PNSN_src.util.SAM import pb_SAM
 
 
-
 ### PARAMETER CONTROL BLOCK ###
 # I/O Controls
 LOAD_DATA_SPLIT = False
 SAVE_BASE_MODELS = True
 # Define input model collection path
-IN_ROOT = os.path.join(ROOT, "PNSN_Model", "Lara_2023_Preferred", TARGET_MODEL)
+IN_ROOT = os.path.join(ROOT, "PNSN_Model", "Lara_2023_Preferred")
+# Target Pre-Trained Model Types
+TARGET_MODELS = ["MAG"]#, "DIST"]
+# Training Label Names
+LABEL_NAMES = ["magnitude"]#, "delta"]
 # Define output model location
 OUT_ROOT = os.path.join(ROOT, "PNSN_model", "PNSN_retrained")
 
-# Target Pre-Trained Model Types
-TARGET_MODELS = ["MAG", "DIST"]
-# Training Label Names
-LABEL_NAMES = ["magnitude", "delta"]
+
+# Define kwargs for train_test_split()
+ttsplit = 1/3
+tts_kwargs = {"test_size": ttsplit, "random_state": 62323}
+# Define kwargs for K-folds cross validation
+kfold_kwargs = {"n_splits": 10, "shuffle": False}
 
 ### LABELD FEATURE VECTOR LOADING ###
 # Define relative path to extracted feature vectors
@@ -73,13 +78,6 @@ df.index.name = "arid"
 # NOTE: This needs to be maually edited depending on the data labels above
 df = df[(df.magnitude.notna()) & (df.magnitude.notna() > -1) & (df.delta.notna())]
 
-
-## SEMI-SUPERVISED CHUNKS OF CODE
-if SAVE_DATA_SPLIT and not LOAD_DATA_SPLIT:
-    # Define kwargs for train_test_split()
-    tts_kwargs = {"test_size": 0.2, "random_state": 62323}
-    # Define kwargs for K-folds cross validation
-    kfold_kwargs = {"n_splits": 10, "shuffle": False}
 
 if not os.path.exists(OUT_ROOT):
     os.makedirs(OUT_ROOT)
@@ -108,9 +106,9 @@ X, y = df_labeled[fv_cols].values, df_labeled[LABEL_NAMES].values
 
 # Create path and file name for data splitting indices
 indices_out = os.path.join(OUT_ROOT, "indices")
-indices_out_file = os.path.join(indices_out)
+indices_out_file = os.path.join(indices_out, f'test_train_{ttsplit:.2f}_ARID_assignments.csv')
 if not os.path.exists(indices_out):
-    print(f'making directory {indices_out}')
+    print(f"making directory {indices_out}")
     os.makedirs(indices_out)
 
 
@@ -149,11 +147,11 @@ else:
         )
         df_indices = pd.concat([df_indices, _kf_series], axis=1, ignore_index=False)
 
-    print('saving k-folds data splitting to disk')
-    df_indices.to_csv(indices_out_file, header=True, index=True
-    )
+    print("saving k-folds data splitting to disk")
+    df_indices.to_csv(indices_out_file, header=True, index=True)
 
 
+score_ind = []
 # Iterate across folds and run re-training for each individual model
 for _I, _TM in enumerate(TARGET_MODELS):
     TICK = time()
@@ -162,39 +160,42 @@ for _I, _TM in enumerate(TARGET_MODELS):
         io.glob(os.path.join(IN_ROOT, _TM, f"*{_TM}*.joblib"))[0]
     )
     print(f"Starting re-training on {_TM}")
+    # Use BOOL training indices to extract test features and labels
+    X_test = X[~df_indices.train.values, :]
+    y_test = y[~df_indices.train.values, _I]
     # Make a deepcopy of the pretrained model for performance comparison
     # NOTE: Put a pin in this idea - move it to `step3_*.py`
     model_RT = deepcopy(model_PT)
 
     # Iterate across splits
-    for _J in tqdm(range(10)):
-        _kinclude = df_indices[f'kfi{_J:02d}'].values
+    for _J in range(10):
+        _kinclude = df_indices[f"kfi{_J:02d}"].values
         tick = time()
-        print(f"Starting re-training on base_model_ {_I:d}")
+        print(f"Starting re-training on {_TM} base_model_ {_J:d}")
         # Get subset base model
         _base_model_ = model_RT.base_models_[0][_J]
         # Get Kth fold training data subset and specific labels for model
-        _kX_train = X_train[_kinclude, :]
-        _ky_train = y_train[_kinclude, _I]
+        _kX_train = X[_kinclude, :]
+        _ky_train = y[_kinclude, _I]
         # Run training
-        _base_model_.fit(_kX_train, _ky_train).score(X_test, y_test)
+        score = _base_model_.fit(_kX_train, _ky_train).score(X_test, y_test)
+        score_ind.append([_I, _J, score])
         tock = time()
         print(f"re-training took {tock - tick:.3f} sec")
+        print(f"score is {score}")
 
         ## Progressively write retrained base_model_'s to disk
         # Create path(s)
         if SAVE_BASE_MODELS:
             base_iter_dir = os.path.join(OUT_ROOT, _TM, "retrained_base_models")
             if not os.path.exists(base_iter_dir):
-                os.path.makedirs(base_iter_dir)
-            base_iter_out = os.path.join(
-                base_iter_dir, f"base_model_{_I:01d}.joblib"
-            )
+                os.makedirs(base_iter_dir)
+            base_iter_out = os.path.join(base_iter_dir, f"retrained_{_TM}_base_model_{_J:01d}_tf{1 - ttsplit:.2f}.joblib")
             print(f"writing {base_iter_out}")
             io.dump_model(_base_model_, base_iter_out)
 
     ## Dump retrained ensemble model persistence to disk
-    ensemble_out = os.path.join(OUT_ROOT, _TM, f"retrained_{_TM}_ensemble.joblib")
+    ensemble_out = os.path.join(OUT_ROOT, _TM, f"retrained_{_TM}_ensemble_model_tf{1 - ttsplit:.2f}.joblib")
     if not os.path.exists(os.path.split(ensemble_out)[0]):
         os.makedirs(os.path.split(ensemble_out)[0])
     print(f"writing {ensemble_out}")
